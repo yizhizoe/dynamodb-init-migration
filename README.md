@@ -4,7 +4,7 @@
 
 - Migration of DynamoDB table from AWS global region to China regions
 - [DynamoDB cross region replication](https://github.com/aws-samples/aws-dynamodb-cross-region-replication) provides a nice example of continous bi-directional replication but doesn't cover the inital migration. This PoC can be combined with the former as a total solution for DynamoDB migration and replication. 
-- Due to data privacy law, **filtering** on the tables is required before migration
+- Due to data privacy law, **filtering** on the tables is required <u>*before*</u> migration
 - Internet network is not stable and the migration step over Internet requires reliable architecture
 
 ## Architecture
@@ -43,11 +43,11 @@ aws s3 cp source_ddb_filter.py s3://aws-glue-scripts-{account_id}-us-west-2/ --r
 
 3. Set up and run Glue ETL job
 
-Create Glue job as below
+Create Glue job as below and specify the script S3 path to "s3://aws-glue-scripts-{account_id}-us-west-2/source_ddb_filter.py"
 
 ![image-20211026172241060](img/image-20211026172241060.png)
 
-In Job parameter, input the key "export_s3_bucket" and the bucket for export in US region.
+In Job parameter, input the key "export_s3_bucket" and the bucket for export in US region. Set the appropriate worker number and use Glue 2.0
 
 ![image-20211026174117811](img/image-20211026174117811.png)
 
@@ -55,12 +55,43 @@ After creating the job, run the job directly.
 
 #### Set up Data Transfer Hub
 
-Follow the [deployment guide](https://github.com/awslabs/amazon-s3-data-replication-hub-plugin/blob/main/docs/DEPLOYMENT_EN.md) to set up Data Transfer Hub. Add the replication from the source <export_s3_path> to the s3 path in China region. The Data Transfer Hub transfers Amazon S3 objects between AWS China regions and Global regions has auto retry mechanism and error handling so as to provide high resiliency in data transfer over Internet. As it also supports incremental data transfer, the setup for s3 replication can be one-time setup and you can reuse the export path for multiple tables replication. 
+Follow the [deployment guide](https://github.com/awslabs/amazon-s3-data-replication-hub-plugin/blob/main/docs/DEPLOYMENT_EN.md) to set up Data Transfer Hub. Add the replication from the source <export_s3_path> to the s3 path <transfer_target_s3_path> in China region. The Data Transfer Hub transfers Amazon S3 objects between AWS China regions and Global regions has auto retry mechanism and error handling so as to provide high resiliency in data transfer over Internet. As it also supports incremental data transfer, the setup for s3 replication can be one-time setup and you can reuse the export path for multiple tables replication. 
 
 #### Setup in China regions
 
-1. Set up Glue crawler in China region to crawl over the s3 target
+1. Set up Glue crawler in China region to crawl over the s3 target <transfer_target_s3_path>. The role should have both AWSGlueServicePolicy and access to the S3 target path.
 
-![image-20211026175816996](img/image-20211026175816996.png)
+   ![image-20211121225626681](img/image-20211121225626681.png)
 
-Note that after 
+2. The catalog should be similar to the one in US region. 
+
+   ![image-20211121225850480](img/image-20211121225850480.png)
+
+3. Create the target DynamoDB table user_migrated_cn with the same Partition key and Sort Key as in US region. Set the Capacity mode to "**On-demand**". 
+
+   ![image-20211121230907702](img/image-20211121230907702.png)
+
+4. Upload ETL script
+
+```bash
+aws s3 cp dump_target_ddb.py s3://aws-glue-scripts-{account_id}-cn-north-1/ --region cn-north-1
+```
+
+5. Set up and run Glue ETL job
+
+   Create Glue job as below and specify the script S3 path to "s3://aws-glue-scripts-{account_id}-cn-north-1/dump_target_ddb.py"
+
+![image-20211128225456024](img/image-20211128225456024.png)
+
+​	In Job parameters, add "--target_ddb_table_name=user_migrated_cn"
+
+![image-20211128225632937](img/image-20211128225632937.png)
+
+6. Save and run the job. Note that Glue crawler is case insensitive so in this step, it's *important* to double check on the target item attribute names, e.g. we deliberated mapped "pk" to "PK" in the target table. After the job is finished, go to DynamoDB table "user_migrated_cn" and verify that the items are created and they all have attribute "country"= "China".  
+
+   ![image-20211128232815209](img/image-20211128232815209.png)
+
+   To further verify the item number, run "Get live item count".
+
+   ![image-20211128232545512](img/image-20211128232545512.png)
+
