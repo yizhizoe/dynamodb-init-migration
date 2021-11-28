@@ -20,7 +20,7 @@ Filter and export to S3 and replicate to China
 
 ## Setup
 
-#### Setup US region (source table filtering to S3)
+#### A. Setup US region (source table filtering to S3)
 
 We will use the sample data that's generated from the [DynamoDB cross region replication](https://github.com/aws-samples/aws-dynamodb-cross-region-replication) which is a fake user profile table where in every item of the table, there is field "country". The Glue job will filter on this field. 
 
@@ -53,15 +53,15 @@ In Job parameter, input the key "export_s3_bucket" and the bucket for export in 
 
 After creating the job, run the job directly.
 
-#### Set up Data Transfer Hub
+#### B. Set up Data Transfer Hub
 
 Follow the [deployment guide](https://github.com/awslabs/amazon-s3-data-replication-hub-plugin/blob/main/docs/DEPLOYMENT_EN.md) to set up Data Transfer Hub. Add the replication from the source <export_s3_path> to the s3 path <transfer_target_s3_path> in China region. The Data Transfer Hub transfers Amazon S3 objects between AWS China regions and Global regions has auto retry mechanism and error handling so as to provide high resiliency in data transfer over Internet. As it also supports incremental data transfer, the setup for s3 replication can be one-time setup and you can reuse the export path for multiple tables replication. 
 
-#### Setup in China regions
+#### C. Setup in China regions
 
 1. Set up Glue crawler in China region to crawl over the s3 target <transfer_target_s3_path>. The role should have both AWSGlueServicePolicy and access to the S3 target path.
 
-   ![image-20211121225626681](img/image-20211121225626681.png)
+   <img src="img/image-20211121225626681.png" alt="image-20211121225626681" style="zoom:33%;" />
 
 2. The catalog should be similar to the one in US region. 
 
@@ -69,7 +69,7 @@ Follow the [deployment guide](https://github.com/awslabs/amazon-s3-data-replicat
 
 3. Create the target DynamoDB table user_migrated_cn with the same Partition key and Sort Key as in US region. Set the Capacity mode to "**On-demand**". 
 
-   ![image-20211121230907702](img/image-20211121230907702.png)
+   <img src="img/image-20211121230907702.png" alt="image-20211121230907702" style="zoom:33%;" />
 
 4. Upload ETL script
 
@@ -81,7 +81,7 @@ aws s3 cp dump_target_ddb.py s3://aws-glue-scripts-{account_id}-cn-north-1/ --re
 
    Create Glue job as below and specify the script S3 path to "s3://aws-glue-scripts-{account_id}-cn-north-1/dump_target_ddb.py"
 
-![image-20211128225456024](img/image-20211128225456024.png)
+<img src="img/image-20211128225456024.png" alt="image-20211128225456024" style="zoom:33%;" />
 
 ​	In Job parameters, add "--target_ddb_table_name=user_migrated_cn"
 
@@ -93,5 +93,5 @@ aws s3 cp dump_target_ddb.py s3://aws-glue-scripts-{account_id}-cn-north-1/ --re
 
    To further verify the item number, run "Get live item count".
 
-   ![image-20211128232545512](img/image-20211128232545512.png)
+   <img src="img/image-20211128232545512.png" alt="image-20211128232545512" style="zoom: 33%;" />
 
