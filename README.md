@@ -1,11 +1,11 @@
-# DynamoDB Migration with Filtering
+# DynamoDB Table Initial Migration across AWS Partitions with Filtering
 
 ## Background
 
-- Migration of DynamoDB table from AWS global region to China regions
+- Initial migration of DynamoDB table from AWS global region to China regions (as AWS China regions are separated from AWS commercial parition, aka global regions, the common practice of DynamoDB global table is not available for cross-paritition migration)
 - [DynamoDB cross region replication](https://github.com/aws-samples/aws-dynamodb-cross-region-replication) provides a nice example of continous bi-directional replication but doesn't cover the inital migration. This PoC can be combined with the former as a total solution for DynamoDB migration and replication. 
 - Due to data privacy law, **filtering** on the tables is required <u>*before*</u> migration
-- Internet network is not stable and the migration step over Internet requires reliable architecture
+- Cross-border Internet network is not stable and the migration step over Internet requires reliable architecture
 
 ## Architecture
 
