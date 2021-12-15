@@ -1,15 +1,15 @@
 # DynamoDB Table Initial Migration across AWS Partitions with Filtering
 
-## Background
+## Background / Requirement
 
-- Initial migration of DynamoDB table from AWS global region to China regions (as AWS China regions are separated from AWS commercial parition, aka global regions, the common practice of DynamoDB global table is not available for cross-paritition migration)
+- Initial migration of large-volume DynamoDB table (tens of GB and above) from AWS global region to China regions (as AWS China regions are separated from AWS commercial parition, aka global regions, the common practice of DynamoDB global table is not available for cross-paritition migration)
 - [DynamoDB cross region replication](https://github.com/aws-samples/aws-dynamodb-cross-region-replication) provides a nice example of continous bi-directional replication but doesn't cover the inital migration. This PoC can be combined with the former as a total solution for DynamoDB migration and replication. 
-- Due to data privacy law, **filtering** on the tables is required <u>*before*</u> migration
+- Due to data privacy law, **filtering** on the source tables is required <u>*before*</u> migration
 - Cross-border Internet network is not stable and the migration step over Internet requires reliable architecture
 
 ## Architecture
 
-Filter and export to S3 and replicate to China
+The general approach is to filter and export to S3 in source global region and replicate to China. In target region, import the data from S3 to DynamoDB.
 
 - Using Glue, crawl and filter DynamoDB table to export to S3 in global region
 - Replicate to S3 in China using S3 Plugin of [Data Transfer Hub](https://www.amazonaws.cn/en/solutions/data-transfer-hub/
@@ -22,36 +22,36 @@ Filter and export to S3 and replicate to China
 
 #### A. Setup US region (source table filtering to S3)
 
-We will use the sample data that's generated from the [DynamoDB cross region replication](https://github.com/aws-samples/aws-dynamodb-cross-region-replication) which is a fake user profile table where in every item of the table, there is field "country". The Glue job will filter on this field. 
+We will use the sample data that's generated from the [DynamoDB cross region replication](https://github.com/aws-samples/aws-dynamodb-cross-region-replication) which is a fake user profile table and in every item of the table, there is field "country". The Glue job will filter on this field. 
 
 1. Glue Crawler
 
-Setup Glue Crawler on US region to crawl over source DynamoDB table
+   Setup Glue Crawler on US region to crawl over source DynamoDB table
 
-![image-20211026160043023](img/image-20211026160043023.png)
+   ![image-20211026160043023](img/image-20211026160043023.png)
 
-The catalog will be as below
+   The catalog will be as below
 
-<img src="img/image-20211026164056460.png" alt="image-20211026164056460" style="zoom:50%;" />
+   <img src="img/image-20211026164056460.png" alt="image-20211026164056460" style="zoom:50%;" />
 
 2. Upload ETL script
 
-```bash
-git clone https://github.com/yizhizoe/dynamodb-init-migration.git
-aws s3 cp source_ddb_filter.py s3://aws-glue-scripts-{account_id}-us-west-2/ --region us-west-2
-```
+   ```bash
+   git clone https://github.com/yizhizoe/dynamodb-init-migration.git
+   aws s3 cp source_ddb_filter.py s3://aws-glue-scripts-{account_id}-us-west-2/ --region us-west-2
+   ```
 
 3. Set up and run Glue ETL job
 
-Create Glue job as below and specify the script S3 path to "s3://aws-glue-scripts-{account_id}-us-west-2/source_ddb_filter.py"
+   Create Glue job as below and specify the script S3 path to "s3://aws-glue-scripts-{account_id}-us-west-2/source_ddb_filter.py"
 
-![image-20211026172241060](img/image-20211026172241060.png)
+   ![image-20211026172241060](img/image-20211026172241060.png)
 
-In Job parameter, input the key "export_s3_bucket" and the bucket for export in US region. Set the appropriate worker number and use Glue 2.0
+   In Job parameter, input the key "export_s3_bucket" and the bucket for export in US region. Set the appropriate worker number and use Glue 2.0
 
-![image-20211026174117811](img/image-20211026174117811.png)
+   ![image-20211026174117811](img/image-20211026174117811.png)
 
-After creating the job, run the job directly.
+   After creating the job, run the job directly.
 
 #### B. Set up Data Transfer Hub
 
@@ -73,21 +73,21 @@ Follow the [deployment guide](https://github.com/awslabs/amazon-s3-data-replicat
 
 4. Upload ETL script
 
-```bash
-aws s3 cp dump_target_ddb.py s3://aws-glue-scripts-{account_id}-cn-north-1/ --region cn-north-1
-```
+   ```bash
+   aws s3 cp dump_target_ddb.py s3://aws-glue-scripts-{account_id}-cn-north-1/ --region cn-north-1
+   ```
 
 5. Set up and run Glue ETL job
 
    Create Glue job as below and specify the script S3 path to "s3://aws-glue-scripts-{account_id}-cn-north-1/dump_target_ddb.py"
 
-<img src="img/image-20211128225456024.png" alt="image-20211128225456024" style="zoom:33%;" />
+   <img src="img/image-20211128225456024.png" alt="image-20211128225456024" style="zoom:33%;" />
 
-​	In Job parameters, add "--target_ddb_table_name=user_migrated_cn"
+   ​In Job parameters, add "--target_ddb_table_name=user_migrated_cn"
 
-![image-20211128225632937](img/image-20211128225632937.png)
+   ![image-20211128225632937](img/image-20211128225632937.png)
 
-6. Save and run the job. Note that Glue crawler is case insensitive so in this step, it's *important* to double check on the target item attribute names, e.g. we deliberated mapped "pk" to "PK" in the target table. After the job is finished, go to DynamoDB table "user_migrated_cn" and verify that the items are created and they all have attribute "country"= "China".  
+6. Save and run the job. Note that Glue crawler is case insensitive so in this step, it's <u>**important**</u> to double check on the target item attribute names, e.g. we deliberated mapped "pk" to "PK" in the target table. After the job is finished, go to DynamoDB table "user_migrated_cn" and verify that the items are created and they all have attribute "country"= "China".  
 
    ![image-20211128232815209](img/image-20211128232815209.png)
 
@@ -95,3 +95,7 @@ aws s3 cp dump_target_ddb.py s3://aws-glue-scripts-{account_id}-cn-north-1/ --re
 
    <img src="img/image-20211128232545512.png" alt="image-20211128232545512" style="zoom: 33%;" />
 
+## Conclusion
+- The PoC provides a serverless solution for one-time migration of DynamoDB table from AWS global region to China. Combined with the Data Transfer Hub solution, it provides a reliable transfer conduit over cross-border Internet. 
+- Instead of [using EMR Hive for importing/exporting S3 data to DynamoDB](https://docs.aws.amazon.com/emr/latest/ReleaseGuide/EMRforDynamoDB.html), this is more light-weight for developer-based application team to migrate DynamoDB tables on their own.
+- As the solution is based on Glue, serverless ETL service, the cost of Glue running job for migration is minimum. 
